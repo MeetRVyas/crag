@@ -1,6 +1,5 @@
-import json
-import logging
-from typing import List, TypedDict, Literal, Optional, Dict, Any
+import os
+from typing import List, TypedDict, Dict, Any
 
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
@@ -10,12 +9,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_tavily import TavilySearch
 from langgraph.graph import StateGraph, START, END
 
-from dotenv import load_dotenv
-
-from app.config import settings
 from app.models.crag import Score, KeepOrDrop, WebQuery
-
-load_dotenv()
+from app.services.ollama_service import get_ollama_service
+from app.config import settings
 
 # TODO : Add logging
 
@@ -57,22 +53,23 @@ class CRAG_Service :
             self,
             session_id : int,
             retriever,
-            redis_client,
-            db_session,
+            # redis_client,
+            # db_session,
+            model_name,
             provider = "ollama",
             api_keys = None
         ) :
         self.session_id = session_id
         self.retriever = retriever
-        self.redis = redis_client
-        self.db = db_session
+        # self.redis = redis_client
+        # self.db = db_session
         self.api_keys = api_keys or {}
 
-        self.llm = self._initialize_llm(provider)
-        self.tavily = self._initialize_tavily()
+        self.llm = self._initialize_llm(provider, model_name)
+        self.tavily = self._initialize_tavily(settings.TOPIC)
         self.app = self._build_graph()
     
-    def _initialize_llm(self, provider : str) :
+    def _initialize_llm(self, provider : str, model_name : str) :
         """
         This function :
             - Initializes LLM from the selected provider
@@ -80,10 +77,11 @@ class CRAG_Service :
         """
         # TODO : Validate that the provider supports the model
         if provider == "ollama" :
+            model = get_ollama_service().validate_and_ensure_llm(model_name)
             return ChatOllama(
-                model = settings.LLM_MODEL,
+                model = model,
                 temperature = 0,
-                base_url = "http://ollama:11434"
+                base_url = os.getenv("OLLAMA_BASE_URL")
             )
         elif provider == "google" :
             api_key = self.api_keys.get(provider)
@@ -91,15 +89,15 @@ class CRAG_Service :
                 raise ValueError("Google API key not found")
             
             return ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash",
-                temperature=0,
-                google_api_key=api_key
+                model = model_name,
+                temperature = 0,
+                google_api_key = api_key
             )
         # TODO : Implement more providers
         else:
             raise ValueError(f"Unsupported provider: {provider}")
     
-    def _initialize_tavily(self):
+    def _initialize_tavily(self, topic):
         """
         This function :
             - Initializes Tavily web search tool
@@ -112,11 +110,13 @@ class CRAG_Service :
             # Don't raise a error on initialization
             # as the users have a choice to disable web search
             # TODO : Log a warning here
+            print("No Tavily API Key")
             return None
         
         return TavilySearch(
             max_results = 5,
-            topic = settings.TOPIC
+            topic = topic or "general",
+            tavily_api_key = api_key
         )
     
     def _build_graph(self) :
@@ -155,10 +155,11 @@ class CRAG_Service :
         return workflow.compile()
 
     def run(self, question : str) :
-        self.app.invoke({"question" : question})
+        return self.app.invoke({"question" : question})
 
     def retrieve(self, state : State) -> Dict[str, Any] :
         """Node 1 : Retrieve documents using HyDE *Hypothetical Document Embeddings approach"""
+        print("RETRIEVE")
         question = state["question"]
 
         # HyDE Approach
@@ -173,6 +174,7 @@ class CRAG_Service :
         # Handle different return types from different LLM wrappers
         # OllamaLLM returns str whereas ChatGoogleGenerativeAI returns a response object
         hypothetical_text = hypothetical.content if hasattr(hypothetical, 'content') else str(hypothetical)
+        print(hypothetical_text)
 
         # Retrieve using the hypothetical answer
         docs = self.retriever.invoke(hypothetical_text)
@@ -184,6 +186,7 @@ class CRAG_Service :
     
     def evaluate(self, state: State) -> Dict[str, Any]:
         """Node 2 : Scores each document 0-1"""
+        print("EVALUATE")
         question = state["question"]
         docs = state["docs"]
 
@@ -241,6 +244,7 @@ class CRAG_Service :
     
     def rewrite(self, state: State) -> Dict[str, Any]:
         """Node 3 : Rewrite question for Web Search"""
+        print("REWRITE")
         question = state["question"]
 
         parser = PydanticOutputParser(pydantic_object = WebQuery)
@@ -268,6 +272,7 @@ class CRAG_Service :
 
     def research(self, state: State) -> Dict[str, Any]:
         """Node 4: Search the Web"""
+        print("RESEARCH")
         query = state.get("web_query", state["question"])
         
         if not self.tavily:
@@ -277,7 +282,7 @@ class CRAG_Service :
             # Tavily returns a list of dicts
             results = self.tavily.invoke({"query": query})
             web_docs = []
-            for r in results:
+            for r in results["results"] :
                 web_docs.append(Document(
                     page_content=r.get("content", ""),
                     metadata={"source": r.get("url"), "title": r.get("title")}
@@ -304,6 +309,7 @@ class CRAG_Service :
     
     def refine(self, state: State) -> Dict[str, Any]:
         """Node 5: Refine context"""
+        print("REFINE")
         # Select Source Documents based on Verdict
         docs = self._return_docs_based_on_verdict(state)
         
@@ -322,6 +328,7 @@ class CRAG_Service :
         chain = prompt | self.llm | parser
         
         kept = []
+
         # TODO : Remove sentences limit for production
         for sent in sentences[:20]: # Limit to first 20 sentences to save time/tokens for now
             try:
@@ -344,6 +351,7 @@ class CRAG_Service :
 
     def generate(self, state: State) -> Dict[str, Any]:
         """Node 6: Generate Final Answer"""
+        print("GENERATE")
         question = state["question"]
         context = state["refined_context"]
         

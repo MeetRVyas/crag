@@ -39,7 +39,6 @@ async def set_api_keys(
     session_id : str = Depends(get_current_session),
     auth_service : Auth_Service = Depends(get_auth_service)
 ) :
-    print(keys)
     keys_dict = {k : v for k, v in keys.model_dump().items() if v is not None}
 
     if not keys_dict :

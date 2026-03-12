@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.config import settings
-from app.services.crag_service import CRAG_Service
-from app.services.document_service import DocumentService
-from app.middleware.auth import get_current_session
-from app.database import get_db
-from app.redis_client import redis_client
 from app.services.auth_service import Auth_Service
+from app.services.document_service import DocumentService
+from app.services.crag_service import CRAG_Service
+from app.middleware.auth import get_current_session
+from app.redis_client import get_redis
 from app.models.crag import CRAGRequest, CRAGResponse
 
 router = APIRouter(prefix="/crag", tags=["CRAG"])
@@ -15,23 +14,37 @@ router = APIRouter(prefix="/crag", tags=["CRAG"])
 async def chat(
     req: CRAGRequest,
     session_id: dict = Depends(get_current_session),
-    db = Depends(get_db)
+    redis_client = Depends(get_redis),
 ) -> CRAGResponse :
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
     # 1. Get API Keys from Redis (via Auth_Service)
-    auth_service = Auth_Service(redis_client, db)
-    api_keys = {}
+    auth_service = Auth_Service(redis_client)
+    api_keys : dict[str, str] = {}
     
     # We need to decrypt keys to pass them to CRAG_Service
     # Note: In a real app, be careful passing raw keys. 
     # Here CRAGService lives in memory for the request duration only.
-    if req.provider != "ollama":
+    if req.llm_provider != "ollama":
         try:
-            api_keys[req.provider] = auth_service.get_api_key(session_id, req.provider)
+            key = await auth_service.get_api_key(session_id, req.llm_provider)
+            if not key:
+                raise Exception
+            api_keys[req.llm_provider] = key
         except:
-            raise HTTPException(400, f"{req.provider} provider selected but no API key found in session.")
-            
+            raise HTTPException(400, f"{req.llm_provider} llm_provider selected but no API key found in session.")
+    if req.embedding_provider != "ollama":
+        try:
+            key = await auth_service.get_api_key(session_id, req.embedding_provider)
+            if not key:
+                raise Exception
+            api_keys[req.embedding_provider] = key
+        except:
+            raise HTTPException(400, f"{req.embedding_provider} embedding_provider selected but no API key found in session.")
+    
     try:
-        tavily_key = auth_service.get_api_key(session_id, "tavily")
+        tavily_key = await auth_service.get_api_key(session_id, "tavily")
         if tavily_key:
             api_keys["tavily"] = tavily_key
     except:
@@ -39,24 +52,23 @@ async def chat(
 
     # 2. Initialize Document Service to get Retriever
     doc_service = DocumentService(session_id)
-    retriever = doc_service.get_retriever(provider=req.provider, api_key=api_keys.get(req.provider))
+    retriever = doc_service.get_retriever(
+        model = req.embedding_model,
+        provider = req.embedding_provider,
+        api_key = api_keys.get(req.embedding_provider)
+    )
     
     if not retriever:
         raise HTTPException(400, "No index found. Please upload documents first.")
 
     # 3. Initialize CRAG Service
-    # Set default models if not provided
-    model_name = req.model
-    if not model_name:
-        model_name = settings.LLM_MODEL
-
     try:
         crag = CRAG_Service(
-            session_id=session_id,
-            retriever=retriever,
-            llm_provider=req.provider,
-            model_name=model_name,
-            api_keys=api_keys
+            session_id = session_id,
+            retriever = retriever,
+            provider = req.llm_provider,
+            model_name = req.llm_model or settings.LLM_MODEL,
+            api_keys = api_keys
         )
         
         # 4. Run Pipeline
@@ -65,8 +77,10 @@ async def chat(
         return {
             "answer": result["answer"],
             "verdict": result["verdict"],
-            "web_search_used": len(result.get("web_docs", [])) > 0,
+            "web_search_used": bool(result.get("web_docs", [])),
         }
-        
+    
+    except HTTPException :
+        raise
     except Exception as e:
         raise HTTPException(500, f"CRAG Pipeline failed: {str(e)}")

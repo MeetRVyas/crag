@@ -4,17 +4,18 @@ import shutil
 from pathlib import Path
 import json
 from typing import List, Optional
-from contextlib import suppress
 
 from filelock import FileLock
-from pydantic import BaseModel
 
 from fastapi import UploadFile
 
-from langchain_community.document_loaders import PyPDFLoader
+import faiss
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.docstore.in_memory import InMemoryDocstore
+from langchain_ollama.embeddings import OllamaEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from langchain_community.retrievers import BM25Retriever
@@ -25,14 +26,13 @@ from langchain_community.document_compressors.flashrank_rerank import FlashrankR
 from langchain_core.documents import Document
 from langchain_core.stores import InMemoryStore
 
-from app.config import settings
 from app.models.documents import ProcessResult
 
 # ---------------------------
 # Configuration
 # ---------------------------
 
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/tmp/sessions")
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/tmp/data/sessions")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
 
@@ -106,26 +106,26 @@ class DocumentService:
         finally:
             file.file.close()
 
-        return file_path
+        return filename
 
     # ---------------------------
     # Embedding Factory
     # ---------------------------
 
-    def get_embeddings(self, provider: str = "ollama", api_key: Optional[str] = None):
+    def get_embeddings(self, model : str, provider: str = "ollama", api_key: Optional[str] = None):
         # TODO : Validate that the provider supports the model
         if provider == "google":
             if not api_key:
                 raise ValueError("Google API key required")
             return GoogleGenerativeAIEmbeddings(
-                model=settings.EMBEDDING_MODEL,
+                model=model,
                 google_api_key=api_key
             )
 
         if provider == "ollama":
             return OllamaEmbeddings(
                 base_url=OLLAMA_BASE_URL,
-                model=settings.EMBEDDING_MODEL
+                model=model
             )
 
         raise ValueError("Unsupported embedding provider")
@@ -134,7 +134,7 @@ class DocumentService:
     # Processing
     # ---------------------------
 
-    def process_documents(self, provider: str = "ollama", api_key: Optional[str] = None) -> ProcessResult:
+    def process_documents(self, model : str, provider: str = "ollama", api_key: Optional[str] = None) -> ProcessResult:
 
         with FileLock(self.lock_path):
 
@@ -173,15 +173,23 @@ class DocumentService:
 
             chunks = parent_splitter.split_documents(documents)
 
-            embeddings = self.get_embeddings(provider, api_key)
+            embeddings = self.get_embeddings(model, provider, api_key)
 
             # Clean old index
             shutil.rmtree(self.index_dir, ignore_errors=True)
             os.makedirs(self.index_dir, exist_ok=True)
 
-              # Create FAISS vector store
-            # init with dummy
-            vectorstore = FAISS.from_documents([], embeddings)
+            # Create FAISS vector store
+            dim = len(embeddings.embed_query("dimension check"))
+
+            index = faiss.IndexFlatL2(dim)
+
+            vectorstore = FAISS(
+                embedding_function=embeddings,
+                index=index,
+                docstore=InMemoryDocstore(),
+                index_to_docstore_id={}
+            )
 
             # Persistent docstore
             docstore = InMemoryStore()
@@ -227,13 +235,12 @@ class DocumentService:
     # Retriever Construction
     # ---------------------------
 
-    def get_retriever(self, provider: str = "ollama", api_key: Optional[str] = None):
-
+    def get_retriever(self, model : str, provider: str = "ollama", api_key: Optional[str] = None):
         index_file = os.path.join(self.index_dir, "index.faiss")
         if not os.path.exists(index_file):
             return None
 
-        embeddings = self.get_embeddings(provider, api_key)
+        embeddings = self.get_embeddings(model, provider, api_key)
 
         vectorstore = FAISS.load_local(
             self.index_dir,
@@ -282,6 +289,7 @@ class DocumentService:
                 weights = [0.3, 0.7]
             )
 
+        # TODO : Mount flash reranker cache to a volume
         if not DocumentService._reranker_instance:
             DocumentService._reranker_instance = FlashrankRerank(
                 model="ms-marco-MiniLM-L-12-v2",
