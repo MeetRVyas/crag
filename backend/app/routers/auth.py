@@ -39,13 +39,8 @@ async def set_api_keys(
     session_id : str = Depends(get_current_session),
     auth_service : Auth_Service = Depends(get_auth_service)
 ) :
-    keys_dict = {k : v for k, v in keys.model_dump().items() if v is not None}
-
-    if not keys_dict :
-        raise HTTPException(status_code = 400, detail = "No valid API keys provided")
-
     try :
-        await auth_service.store_api_keys(session_id, keys_dict)
+        await auth_service.store_api_keys(session_id, keys.keys)
         return {"message" : "Keys encrypted and stored"}
     except ValueError as e :
         raise HTTPException(status_code = 400, detail = str(e))
