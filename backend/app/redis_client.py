@@ -1,7 +1,7 @@
-import redis
+from redis.asyncio import from_url
 from app.config import settings
 
-redis_client = redis.from_url(
+redis_client = from_url(
     settings.REDIS_URL,
     decode_responses = True
 )

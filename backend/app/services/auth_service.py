@@ -73,7 +73,7 @@ class Auth_Service :
         }
 
         # Session to redis
-        self.redis.setex(
+        await self.redis.setex(
             f"session:{session_id}",
 
             # Redis setex expects TTL in seconds or integer
@@ -100,7 +100,7 @@ class Auth_Service :
         return access_token
     
     async def store_api_keys(self, session_id : str, api_keys : dict) :
-        raw_session = self.redis.get(f"session:{session_id}")
+        raw_session = await self.redis.get(f"session:{session_id}")
 
         if not raw_session :
             raise ValueError("Session Invalid")
@@ -113,18 +113,18 @@ class Auth_Service :
                 encrypted_keys[provider.lower()] = self.cipher.encrypt(key.encode()).decode()
         session_data["api_keys"] = encrypted_keys
 
-        ttl = self.redis.ttl(f"session:{session_id}")
+        ttl = await self.redis.ttl(f"session:{session_id}")
         if ttl <= 0 :
             raise HTTPException(status_code = 401, detail = "Session Invalid")
         
-        self.redis.setex(
+        await self.redis.setex(
             f"session:{session_id}",
             ttl,
             json.dumps(session_data)
         )
     
     async def get_api_key(self, session_id : str, provider : str) -> str :
-        raw_session = self.redis.get(f"session:{session_id}")
+        raw_session = await self.redis.get(f"session:{session_id}")
 
         if not raw_session :
             return None
@@ -142,4 +142,4 @@ class Auth_Service :
         return None
     
     async def logout(self, session_id : str) :
-        self.redis.delete(f"session:{session_id}")
+        await self.redis.delete(f"session:{session_id}")
