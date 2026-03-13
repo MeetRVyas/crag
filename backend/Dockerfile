@@ -32,6 +32,10 @@ COPY . .
 # Ensure correct ownership
 RUN chown -R appuser:appgroup /app
 
+# Make temporary sessions directory
+RUN mkdir -p /tmp/sessions && \
+    chown -R appuser:appgroup /tmp/sessions
+
 # Switch to non-root user
 USER appuser
 

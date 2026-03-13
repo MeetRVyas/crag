@@ -32,7 +32,7 @@ services :
         resources:
           limits:
             cpus: "2.0"
-            memory: 4g
+            memory: 6g
     
     redis :
         image : redis:7-alpine
