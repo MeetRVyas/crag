@@ -10,6 +10,10 @@ from app.models.crag import CRAGRequest, CRAGResponse
 
 router = APIRouter(prefix="/crag", tags=["CRAG"])
 
+# Providers that run locally and need no API key fetched from the session
+_LOCAL_LLM_PROVIDERS = {"ollama", "huggingface_local"}
+_LOCAL_EMBEDDING_PROVIDERS = {"ollama", "huggingface"}
+
 @router.post("/chat", response_model = CRAGResponse)
 async def chat(
     req: CRAGRequest,
@@ -23,10 +27,9 @@ async def chat(
     auth_service = Auth_Service(redis_client)
     api_keys : dict[str, str] = {}
     
-    # We need to decrypt keys to pass them to CRAG_Service
-    # Note: In a real app, be careful passing raw keys. 
-    # Here CRAGService lives in memory for the request duration only.
-    if req.llm_provider != "ollama":
+    # Local providers (ollama, huggingface_local) need no key.
+    # All cloud providers (groq, anthropic, huggingface_api, google) do.
+    if req.llm_provider not in _LOCAL_LLM_PROVIDERS:
         try:
             key = await auth_service.get_api_key(session_id, req.llm_provider)
             if not key:
@@ -34,7 +37,12 @@ async def chat(
             api_keys[req.llm_provider] = key
         except:
             raise HTTPException(400, f"{req.llm_provider} llm_provider selected but no API key found in session.")
-    if req.embedding_provider != "ollama":
+    
+    # Local providers (ollama, huggingface) need no key.
+    # groq/anthropic are not valid embedding providers — the factory falls back
+    # to Ollama automatically, so they also need no key here.
+    # Only google requires a key for embeddings.
+    if req.embedding_provider not in _LOCAL_EMBEDDING_PROVIDERS:
         try:
             key = await auth_service.get_api_key(session_id, req.embedding_provider)
             if not key:
@@ -59,7 +67,10 @@ async def chat(
     )
     
     if not retriever:
-        raise HTTPException(400, "No index found. Please upload documents first.")
+        raise HTTPException(
+            400,
+            "No index found. Please upload documents first."
+        )
 
     # 3. Initialize CRAG Service
     try:
@@ -83,4 +94,4 @@ async def chat(
     except HTTPException :
         raise
     except Exception as e:
-        raise HTTPException(500, f"CRAG Pipeline failed: {str(e)}")
+        raise HTTPException(500, f"CRAG Pipeline failed: {e}")

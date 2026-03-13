@@ -64,7 +64,7 @@ async def process_documents(
     # TODO : Use API Key from session storage
     # TODO : Implement other providers
     if req.provider == "google":
-        api_key = Auth_Service(redis_client).get_api_key(session_id, req.provider)
+        api_key = await Auth_Service(redis_client).get_api_key(session_id, req.provider)
 
     try:
         result = service.process_documents(

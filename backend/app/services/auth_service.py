@@ -142,4 +142,4 @@ class Auth_Service :
         return None
     
     async def logout(self, session_id : str) :
-        await self.redis.delete(f"session:{session_id}")
+        self.redis.delete(f"session:{session_id}")

@@ -37,23 +37,25 @@ class Settings(BaseSettings):
     @field_validator("LLM_MODEL")
     @classmethod
     def validate_default_llm(cls, v, info):
-        allowed = info.data.get("OLLAMA_ALLOWED_LLM_MODELS", [])
-        # Only validate if allowlist is already resolved (ordering not guaranteed in v2)
-        if allowed and v not in allowed:
-            raise ValueError(
-                f"LLM_MODEL '{v}' must be in OLLAMA_ALLOWED_LLM_MODELS: {allowed}"
-            )
+        if info.data.get("PROVIDER", "") == "ollama" :
+            allowed = info.data.get("OLLAMA_ALLOWED_LLM_MODELS", [])
+            # Only validate if allowlist is already resolved (ordering not guaranteed in v2)
+            if allowed and v not in allowed:
+                raise ValueError(
+                    f"LLM_MODEL '{v}' must be in OLLAMA_ALLOWED_LLM_MODELS: {allowed}"
+                )
         return v
 
     @field_validator("EMBEDDING_MODEL")
     @classmethod
     def validate_default_embedding(cls, v, info):
-        allowed = info.data.get("OLLAMA_ALLOWED_EMBEDDING_MODELS", [])
-        # Only validate if allowlist is already resolved (ordering not guaranteed in v2)
-        if allowed and v not in allowed:
-            raise ValueError(
-                f"EMBEDDING_MODEL '{v}' must be in OLLAMA_ALLOWED_EMBEDDING_MODELS: {allowed}"
-            )
+        if info.data.get("EMBEDDING_PROVIDER", "") == "ollama" :
+            allowed = info.data.get("OLLAMA_ALLOWED_EMBEDDING_MODELS", [])
+            # Only validate if allowlist is already resolved (ordering not guaranteed in v2)
+            if allowed and v not in allowed:
+                raise ValueError(
+                    f"EMBEDDING_MODEL '{v}' must be in OLLAMA_ALLOWED_EMBEDDING_MODELS: {allowed}"
+                )
         return v
 
     class Config:

@@ -9,9 +9,6 @@ class Score(BaseModel):
 class KeepOrDrop(BaseModel):
     keep: bool = Field(description="True if sentence is directly relevant")
 
-class WebQuery(BaseModel):
-    query: str = Field(description="Optimized web search query")
-
 class CRAGRequest(BaseModel):
     question: str = Field(description="Original user query", min_length=3, max_length=2000)
     embedding_provider: str = Field(description="Embedding provider, for example, ollama, google, huggingface, etc", default = settings.EMBEDDING_PROVIDER)

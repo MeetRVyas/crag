@@ -15,17 +15,6 @@ from app.services.ollama_service import get_ollama_service
 Base.metadata.create_all(bind = engine)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # ── Startup ──
-    print("Preloading default Ollama models...")
-    try:
-        get_ollama_service().preload_defaults()
-    except Exception as e:
-        print(f"Ollama preload failed (non-fatal): {e}")
-    yield
-
-
 async def _wait_for_ollama(timeout: int = 120, interval: int = 3) -> bool:
     """Poll Ollama's health endpoint until ready or timed out."""
     url = f"{settings.OLLAMA_BASE_URL}/api/tags"

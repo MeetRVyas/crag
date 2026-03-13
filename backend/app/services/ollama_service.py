@@ -3,8 +3,6 @@ import ollama as ollama_client
 from fastapi import HTTPException
 from app.config import settings
 
-OLLAMA_ALLOWED_LLM_MODELS: list[str] = settings.OLLAMA_ALLOWED_LLM_MODELS
-OLLAMA_ALLOWED_EMBEDDING_MODELS: list[str] = settings.OLLAMA_ALLOWED_EMBEDDING_MODELS
 
 class OllamaModelService:
     def __init__(self, base_url: str = None):
@@ -55,12 +53,12 @@ class OllamaModelService:
         Pulls it if not installed.
         Raises 400 if not on allowlist, 503 if pull fails.
         """
-        if model not in OLLAMA_ALLOWED_LLM_MODELS:
+        if model not in settings.OLLAMA_ALLOWED_LLM_MODELS:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"Model '{model}' is not allowed. "
-                    f"Allowed models: {sorted(OLLAMA_ALLOWED_LLM_MODELS)}"
+                    f"Allowed models: {sorted(settings.OLLAMA_ALLOWED_LLM_MODELS)}"
                 )
             )
         if not self.is_installed(model):
@@ -69,12 +67,12 @@ class OllamaModelService:
         return model
 
     def validate_and_ensure_embedding(self, model: str) -> str:
-        if model not in OLLAMA_ALLOWED_EMBEDDING_MODELS:
+        if model not in settings.OLLAMA_ALLOWED_EMBEDDING_MODELS:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"Embedding model '{model}' is not allowed. "
-                    f"Allowed models: {sorted(OLLAMA_ALLOWED_EMBEDDING_MODELS)}"
+                    f"Allowed models: {sorted(settings.OLLAMA_ALLOWED_EMBEDDING_MODELS)}"
                 )
             )
         if not self.is_installed(model):
