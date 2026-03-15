@@ -24,7 +24,7 @@ async def get_current_session(
 
         session_id = payload.get("session_id")
 
-        if not redis.exists(f"session:{session_id}") :
+        if not await redis.exists(f"session:{session_id}") :
             raise HTTPException(status_code = 401, detail = "Session Invalid")
         
         return session_id

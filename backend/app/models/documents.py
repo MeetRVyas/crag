@@ -9,7 +9,7 @@ class ProcessResult(BaseModel):
     corrupted_docs: int
 
 class RouterProcessRequest(BaseModel):
-    provider: str = Field(default=settings.EMBEDDING_PROVIDER, pattern="^(ollama|google)$")
+    provider: str = Field(default=settings.EMBEDDING_PROVIDER, pattern="^(ollama|google|huggingface|groq|anthropic)$")
     embedding_model: str = Field(default=settings.EMBEDDING_MODEL)
 
 

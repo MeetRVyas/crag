@@ -7,6 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Ensure logs appear immediately (no buffering)
 ENV PYTHONUNBUFFERED=1
 
+# Disable pip checks
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
 # Create non-root user for security
 RUN addgroup --system appgroup && \
     adduser --system --ingroup appgroup appuser
@@ -21,10 +25,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt .
+COPY requirements.lock .
 
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.lock
 
 # Copy application code
 COPY . .

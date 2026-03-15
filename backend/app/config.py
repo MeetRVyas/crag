@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL : str
     LLM_MODEL : str
 
+    HF_TOKEN : str
+
+    EMBEDDING_FALLBACK : str = "ollama"
+
+    MAX_LLM_RETRIES_ON_API_LIMITS : int = 10
+
     OLLAMA_ALLOWED_EMBEDDING_MODELS : list[str]
     OLLAMA_ALLOWED_LLM_MODELS : list[str]
 

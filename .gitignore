@@ -2,3 +2,5 @@
 .env
 .env/
 data/
+freeze_env/
+*.lock.bak

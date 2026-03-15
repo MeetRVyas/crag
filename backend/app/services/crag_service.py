@@ -1,4 +1,5 @@
 import re
+import time
 from typing import List, TypedDict, Dict, Any
 
 from langchain_core.documents import Document
@@ -50,7 +51,7 @@ class CRAG_Service :
     MAX_REFINE_SENTENCES = 20
 
     # Max characters for the hypothetical answer (used in HyDE prompt)
-    HYDE_MAX_TOKENS = 5000
+    HYDE_MAX_TOKENS = 100
 
     def __init__(
         self,
@@ -126,20 +127,26 @@ class CRAG_Service :
         return "refine" if state["verdict"] == "CORRECT" else "rewrite"
 
     def run(self, question: str) -> dict:
-        return self.app.invoke({
-            "question":           question,
-            "hypothetical_answer": "",
-            "docs":               [],
-            "good_docs":          [],
-            "verdict":            "",
-            "reason":             "",
-            "web_query":          "",
-            "web_docs":           [],
-            "strips":             [],
-            "kept_strips":        [],
-            "refined_context":    "",
-            "answer":             "",
-        })
+        try:
+            return self.app.invoke({
+                "question":           question,
+                "hypothetical_answer": "",
+                "docs":               [],
+                "good_docs":          [],
+                "verdict":            "",
+                "reason":             "",
+                "web_query":          "",
+                "web_docs":           [],
+                "strips":             [],
+                "kept_strips":        [],
+                "refined_context":    "",
+                "answer":             "",
+            })
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print("CRAG pipeline crashed : {e}")
+            raise
 
     # Nodes
 
@@ -156,6 +163,7 @@ class CRAG_Service :
                 "system",
                 "You are a professional who gives answers to questions with unknown context.\n"
                 "Write a concise, technical passage that answers the question.\n"
+                "ONLY RETURN A STRING AS ANSWER.\n"
                 "Return the answer in under {max_tokens} characters.",
             ),
             ("human", "Question: {question}"),
@@ -167,9 +175,8 @@ class CRAG_Service :
             "max_tokens": self.HYDE_MAX_TOKENS,
         })
 
-        hypothetical_text = (
-            response.content if hasattr(response, "content") else str(response)
-        )
+        hypothetical_text = self._extract_text(response)
+
         docs = self.retriever.invoke(hypothetical_text)
 
         return {
@@ -214,9 +221,11 @@ class CRAG_Service :
                     "format_instructions": parser.get_format_instructions()
                 })
                 score = res.score
+                time.sleep(1)
             except Exception as e :
                 # TODO : Log a warning here
                 score = 0.0
+                time.sleep(1)
 
             scores.append(score)
             if score > self.LOWER_THRESHOLD:
@@ -282,7 +291,14 @@ class CRAG_Service :
             results = self.tavily.invoke({"query": query})
             web_docs: List[Document] = []
 
-            for r in results.get("results", []):
+            if isinstance(results, list) :
+                raw = results
+            elif isinstance(results, dict) :
+                raw = results.get("results", [])
+            else :
+                raw = []
+
+            for r in raw :
                 title = r.get("title", "")
                 url = r.get("url", "")
                 content = r.get("content", "") or r.get("snippet", "")
@@ -321,17 +337,23 @@ class CRAG_Service :
         chain = prompt | self.llm | parser
         kept: List[str] = []
 
-        for sent in sentences[: self.MAX_REFINE_SENTENCES]:
+        print(end = "| ")
+        # for sent in sentences[: self.MAX_REFINE_SENTENCES]:
+        for sent in sentences :
             try:
                 res: KeepOrDrop = chain.invoke({
                     "question": state["question"],
                     "sentence": sent,
                     "format_instructions": parser.get_format_instructions()
                 })
+                print(res.keep, end = " | ")
                 if res.keep:
                     kept.append(sent)
+                time.sleep(1)
             except:
                 kept.append(sent)  # fail-open
+                time.sleep(1)
+        print()
 
         refined_context = "\n".join(kept).strip()
         return {
@@ -365,7 +387,7 @@ class CRAG_Service :
             "context": context,
         })
 
-        answer = response.content if hasattr(response, "content") else str(response)
+        answer = self._extract_text(response)
         
         return {"answer": answer}
 
@@ -386,5 +408,35 @@ class CRAG_Service :
         Filters out very short fragments (< 20 chars).
         """
         full_text = " ".join(d.page_content for d in docs)
+        step = len(full_text.strip()) // 10
         sentences = re.split(r"(?<=[.!?])\s+", full_text)
-        return [s.strip() for s in sentences if len(s.strip()) > 20]
+        result = []
+        curr = ""
+        for s in sentences :
+            if len(curr) < step :
+                curr += s.strip()
+            else :
+                result.append(curr.strip())
+                curr = s.strip()
+        result.append(curr.strip())
+        # return [s.strip() for s in sentences if len(s.strip()) > 20]
+        return result
+    
+    @staticmethod
+    def _extract_text(response) -> str:
+        """Safely extract string content from any LLM response object."""
+        if hasattr(response, "content"):
+            content = response.content
+            if isinstance(content, list):
+                # Extract text from list of content blocks
+                text = ""
+                for block in content :
+                    if isinstance(block, dict) :
+                        text += block.get("text", "").strip()
+                    else :
+                        text += str(block).strip()
+            else:
+                text = str(content)
+        else:
+            text = str(response)
+        return text
