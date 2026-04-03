@@ -19,4 +19,5 @@ class CRAGRequest(BaseModel):
 class CRAGResponse(BaseModel) :
     answer : str = Field(description="Answer given by LLM")
     verdict : str = Field(description="Whether the documents retrieved were AMBIGUOUS, CORRECT or INCORRECT")
-    web_search_used : bool = Field(description="Wheter web search was used or not. Used if the verdict was AMBIGUOUS or INCORRECT")
+    web_search_used : bool = Field(description="Whether web search was used or not. Used if the verdict was AMBIGUOUS or INCORRECT")
+    cached: bool = Field(description="Whether this answer was served from the Redis cache", default=False)

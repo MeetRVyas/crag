@@ -12,14 +12,38 @@ from app.config import settings
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-# ---------------------------
+# ---------------------------------------------------------------------------
+# Cache invalidation helper
+# ---------------------------------------------------------------------------
+
+async def _invalidate_session_cache(session_id: str, redis_client) -> None:
+    """
+    Delete every cached CRAG answer that belongs to this session.
+
+    Cache keys follow the pattern:  cache:answer:{session_id}:{sha256}
+    We scan for that prefix and bulk-delete any matches.  At this scale
+    (1-5 docs per user) the scan will rarely return more than a handful
+    of keys, so this is perfectly efficient.
+    """
+    pattern = f"cache:answer:{session_id}:*"
+    cursor = 0
+    while True:
+        cursor, keys = await redis_client.scan(cursor, match=pattern, count=100)
+        if keys:
+            await redis_client.delete(*keys)
+        if cursor == 0:
+            break
+
+
+# ---------------------------------------------------------------------------
 # Upload
-# ---------------------------
+# ---------------------------------------------------------------------------
 
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    session_id: dict = Depends(get_current_session),
+    session_id: str = Depends(get_current_session),
+    redis_client=Depends(get_redis),
 ):
     if not session_id:
         raise HTTPException(status_code=401, detail="Invalid session")
@@ -30,9 +54,15 @@ async def upload_document(
     service = DocumentService(session_id)
 
     try:
+        filename = service.save_upload(file)
+
+        # A new document changes the document set, so any cached answers
+        # computed against the old set are now stale.
+        await _invalidate_session_cache(session_id, redis_client)
+
         return {
-            "filename": service.save_upload(file),
-            "status": "uploaded"
+            "filename": filename,
+            "status": "uploaded",
         }
 
     except ValueError as ve:
@@ -43,15 +73,16 @@ async def upload_document(
     finally :
         file.file.close()
 
-# ---------------------------
+
+# ---------------------------------------------------------------------------
 # Process / Index
-# ---------------------------
+# ---------------------------------------------------------------------------
 
 @router.post("/process")
 async def process_documents(
     req: RouterProcessRequest,
-    session_id: dict = Depends(get_current_session),
-    redis_client: dict = Depends(get_redis),
+    session_id: str = Depends(get_current_session),
+    redis_client=Depends(get_redis),
 ):
     if not session_id:
         raise HTTPException(status_code=401, detail="Invalid session")
@@ -68,8 +99,8 @@ async def process_documents(
 
     try:
         result = service.process_documents(
-            provider=req.provider,
-            api_key=api_key,
+            provider = req.provider,
+            api_key = api_key,
             model = req.embedding_model or settings.EMBEDDING_MODEL
         )
         return result
@@ -79,14 +110,59 @@ async def process_documents(
         raise HTTPException(status_code=500, detail="Document processing failed")
 
 
-# ---------------------------
+# ---------------------------------------------------------------------------
+# Delete
+# ---------------------------------------------------------------------------
+
+@router.delete("/{filename}")
+async def delete_document(
+    filename: str,
+    session_id: str = Depends(get_current_session),
+    redis_client=Depends(get_redis),
+):
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    service = DocumentService(session_id)
+
+    try:
+        service.delete_document(filename)
+
+        # Removing a document invalidates all cached answers for this session —
+        # the document set has changed so previous answers may no longer be valid.
+        await _invalidate_session_cache(session_id, redis_client)
+
+        return {"filename": filename, "status": "deleted"}
+
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception:
+        raise HTTPException(status_code=500, detail="File deletion failed")
+
+
+# ---------------------------------------------------------------------------
+# List
+# ---------------------------------------------------------------------------
+
+@router.get("/")
+async def list_documents(
+    session_id: str = Depends(get_current_session),
+):
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    service = DocumentService(session_id)
+    return {"documents": service.list_documents()}
+
+
+# ---------------------------------------------------------------------------
 # Query (Temporary Retrieval Test)
-# ---------------------------
+# ---------------------------------------------------------------------------
 
 @router.post("/query")
 async def query_documents(
     req: QueryRequest,
-    session_id: dict = Depends(get_current_session),
+    session_id: str = Depends(get_current_session),
 ):
     if not session_id:
         raise HTTPException(status_code=401, detail="Invalid session")
@@ -96,7 +172,7 @@ async def query_documents(
     try:
         retriever = service.get_retriever(
             model = req.model,
-            provider=req.provider
+            provider = req.provider,
         )
         if not retriever:
             raise HTTPException(

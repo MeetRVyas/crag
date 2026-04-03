@@ -1,6 +1,9 @@
+import asyncio
+import json
 import re
 import time
-from typing import List, TypedDict, Dict, Any
+from datetime import datetime, timezone
+from typing import List, TypedDict, Dict, Any, Optional
 
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
@@ -60,10 +63,17 @@ class CRAG_Service :
         model_name: str,
         provider: str = "ollama",
         api_keys: dict = None,
+        redis=None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         self.session_id = session_id
         self.retriever = retriever
         self.api_keys = api_keys or {}
+
+        # Redis client and event loop reference — used for SSE status push.
+        # Both are optional; if absent, status tracking is silently skipped.
+        self.redis = redis
+        self._loop = loop
 
         self.llm = build_llm(
             provider=provider,
@@ -73,6 +83,66 @@ class CRAG_Service :
 
         self.tavily = self._initialize_tavily(settings.TOPIC)
         self.app = self._build_graph()
+
+    # ------------------------------------------------------------------
+    # Status helpers
+    # ------------------------------------------------------------------
+
+    def _push_status(self, step: str, message: str) -> None:
+        """
+        Push a pipeline status event to Redis from a synchronous context.
+
+        The CRAG pipeline runs in a ThreadPoolExecutor thread (via
+        run_in_executor), so we cannot simply `await` an async call.
+        Instead we schedule the coroutine on the event loop that owns the
+        Redis connection and wait for it to complete (2 s timeout).
+        This is non-fatal: any failure is silently swallowed so the
+        pipeline is never interrupted by a status-tracking error.
+        """
+        if not self.redis or not self._loop:
+            return
+        event = json.dumps({
+            "step": step,
+            "message": message,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._push_status_coro(event),
+                self._loop,
+            )
+            future.result(timeout=2)
+        except Exception:
+            pass  # Status tracking is always non-fatal
+
+    async def _push_status_coro(self, event: str) -> None:
+        """Async side of status push — runs on the main event loop."""
+        key = f"pipeline:status:{self.session_id}"
+        await self.redis.rpush(key, event)
+        # 5-minute safety TTL so orphaned lists don't accumulate in Redis
+        await self.redis.expire(key, 300)
+
+    def _push_complete(self, verdict: str) -> None:
+        """Push the terminal completion marker to the status list."""
+        if not self.redis or not self._loop:
+            return
+        event = json.dumps({
+            "complete": True,
+            "verdict": verdict,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._push_status_coro(event),
+                self._loop,
+            )
+            future.result(timeout=2)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Graph construction
+    # ------------------------------------------------------------------
 
     def _initialize_tavily(self, topic: str):
         """
@@ -128,30 +198,38 @@ class CRAG_Service :
 
     def run(self, question: str) -> dict:
         try:
-            return self.app.invoke({
-                "question":           question,
+            result = self.app.invoke({
+                "question":            question,
                 "hypothetical_answer": "",
-                "docs":               [],
-                "good_docs":          [],
-                "verdict":            "",
-                "reason":             "",
-                "web_query":          "",
-                "web_docs":           [],
-                "strips":             [],
-                "kept_strips":        [],
-                "refined_context":    "",
-                "answer":             "",
+                "docs":                [],
+                "good_docs":           [],
+                "verdict":             "",
+                "reason":              "",
+                "web_query":           "",
+                "web_docs":            [],
+                "strips":              [],
+                "kept_strips":         [],
+                "refined_context":     "",
+                "answer":              "",
             })
+            # Push the completion marker so the SSE consumer can close
+            self._push_complete(result.get("verdict", "UNKNOWN"))
+            return result
         except Exception as e:
+            # Push an error completion so the SSE consumer doesn't hang
+            self._push_complete("ERROR")
             import traceback
             traceback.print_exc()
-            print("CRAG pipeline crashed : {e}")
+            print(f"CRAG pipeline crashed: {e}")
             raise
 
+    # ------------------------------------------------------------------
     # Nodes
+    # ------------------------------------------------------------------
 
-    def retrieve(self, state : State) -> Dict[str, Any] :
-        """Node 1 : Retrieve documents using HyDE *Hypothetical Document Embeddings approach"""
+    def retrieve(self, state: State) -> Dict[str, Any]:
+        """Node 1: Retrieve documents using HyDE (Hypothetical Document Embeddings)"""
+        self._push_status("retrieve", "Retrieving relevant documents from your index…")
         print("RETRIEVE")
         question = state["question"]
 
@@ -186,12 +264,13 @@ class CRAG_Service :
     
     def evaluate(self, state: State) -> Dict[str, Any]:
         """Node 2 : Scores each document 0-1"""
+        self._push_status("evaluate", "Evaluating document relevance…")
         print("EVALUATE")
         question = state["question"]
         docs = state["docs"]
 
         # Setup scoring chain
-        parser = PydanticOutputParser(pydantic_object = Score)
+        parser = PydanticOutputParser(pydantic_object=Score)
         prompt = ChatPromptTemplate.from_messages([
             (
                 "system",
@@ -205,7 +284,7 @@ class CRAG_Service :
                 "{format_instructions}\n"
                 "Do NOT return schema. Do NOT explain.",
             ),
-            ("human", "Question: {question}\n\nChunk:\n{context}"),
+            ("human", "Question: {question}\n\nChunk:\n{chunk}"),
         ])
         
         chain = prompt | self.llm | parser
@@ -217,8 +296,8 @@ class CRAG_Service :
             try:
                 res : Score = chain.invoke({
                     "question": question,
-                    "context": doc.page_content,
-                    "format_instructions": parser.get_format_instructions()
+                    "chunk": doc.page_content,
+                    "format_instructions": parser.get_format_instructions(),
                 })
                 score = res.score
                 time.sleep(1)
@@ -241,7 +320,7 @@ class CRAG_Service :
         else:
             verdict = "INCORRECT"
 
-
+        print(f"Verdict -> {verdict} | good -> {len(good_docs)} bad -> {len(docs) - len(good_docs)}")
         return {
             "good_docs": good_docs,
             "verdict": verdict,
@@ -250,6 +329,7 @@ class CRAG_Service :
 
     def rewrite(self, state: State) -> Dict[str, Any]:
         """Node 3 : Rewrite question for Web Search"""
+        self._push_status("rewrite", "Rewriting query for web search…")
         print("REWRITE")
         question = state["question"]
 
@@ -279,6 +359,7 @@ class CRAG_Service :
 
     def research(self, state: State) -> Dict[str, Any]:
         """Node 4: Search the Web"""
+        self._push_status("research", "Searching the web for additional context…")
         print("RESEARCH")
         query = state.get("web_query", state["question"])
         
@@ -316,11 +397,13 @@ class CRAG_Service :
             return {"web_docs": []}
 
     def refine(self, state: State) -> Dict[str, Any]:
-        """Node 5: Refine context"""
+        """Node 5: Decompose context into sentences and keep only relevant ones"""
+        self._push_status("refine", "Filtering context to the most relevant sentences…")
         print("REFINE")
 
         docs = self._select_docs_by_verdict(state)
         sentences = self._decompose_into_sentences(docs)
+        # sentences = sentences[:self.MAX_REFINE_SENTENCES]
 
         parser = PydanticOutputParser(pydantic_object=KeepOrDrop)
         prompt = ChatPromptTemplate.from_messages([
@@ -331,14 +414,15 @@ class CRAG_Service :
                 "Return 'keep': false if it is irrelevant, filler, or metadata.\n"
                 "{format_instructions}",
             ),
-            ("human", "Question: {question}\nSentence: {sentence}"),
+            ("human", "Question: {question}\n\nSentence: {sentence}"),
         ])
 
         chain = prompt | self.llm | parser
         kept: List[str] = []
 
-        print(end = "| ")
-        # for sent in sentences[: self.MAX_REFINE_SENTENCES]:
+        print("Refining -> ", end = "| ")
+
+        
         for sent in sentences :
             try:
                 res: KeepOrDrop = chain.invoke({
@@ -364,6 +448,7 @@ class CRAG_Service :
 
     def generate(self, state: State) -> Dict[str, Any]:
         """Node 6: Generate Final Answer"""
+        self._push_status("generate", "Generating your answer…")
         print("GENERATE")
         question = state["question"]
         context = state.get("refined_context", "").strip()
@@ -388,8 +473,11 @@ class CRAG_Service :
         })
 
         answer = self._extract_text(response)
-        
         return {"answer": answer}
+
+    # ------------------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------------------
 
     def _select_docs_by_verdict(self, state: State) -> List[Document]:
         """Return the appropriate document list based on the pipeline verdict."""
@@ -419,7 +507,6 @@ class CRAG_Service :
                 result.append(curr.strip())
                 curr = s.strip()
         result.append(curr.strip())
-        # return [s.strip() for s in sentences if len(s.strip()) > 20]
         return result
     
     @staticmethod
