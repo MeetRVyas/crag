@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     OLLAMA_ALLOWED_EMBEDDING_MODELS : list[str]
     OLLAMA_ALLOWED_LLM_MODELS : list[str]
 
+    _LOCAL_LLM_PROVIDERS : set[str] = {"ollama", "huggingface_local"}
+    _LOCAL_EMBEDDING_PROVIDERS : set[str] = {"ollama", "huggingface"}
+
+    _CACHE_TTL : int = 86_400  # 24 hours
+    _SSE_TIMEOUT : int = 60      # seconds
+    _SSE_POLL_INTERVAL : int = 0.2     # seconds
+    _SSE_POLL_INTERVAL : int = 0.2     # seconds
+
+    _DOC_HASH_TTL : int = 86_400  # 24 h — matches session TTL
+    _REGISTRY_TTL : int = 86_400
+
     # TODO : Implement topic inputfrom user
     TOPIC : str = "general"
 
