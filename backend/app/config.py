@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     _CACHE_TTL : int = 86_400  # 24 hours
     _SSE_TIMEOUT : int = 60      # seconds
     _SSE_POLL_INTERVAL : int = 0.2     # seconds
-    _SSE_POLL_INTERVAL : int = 0.2     # seconds
+    _SNAPSHOT_TTL : int = 86_400  # 24 hours
 
     _DOC_HASH_TTL : int = 86_400  # 24 h — matches session TTL
     _REGISTRY_TTL : int = 86_400
