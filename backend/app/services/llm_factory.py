@@ -27,6 +27,7 @@ Auto-fallback
 
 import os
 from typing import Callable, Optional
+import time
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
@@ -35,6 +36,7 @@ from app.config import settings
 
 
 _model_cache: dict[str, Embeddings] = {}
+_RETRY_ERRORS = ("429", "resource_exhausted", "quota", "rate limit", "too many requests")
 
 def _cache_model(provider : str) :
     def decorator(func) :
@@ -46,6 +48,25 @@ def _cache_model(provider : str) :
         return wrapper
     return decorator
 
+def retry_embeddings(Embedding_Class, params: dict, max_attempts: int = 6, base_delay: float = 2.0):
+    def _run(fn, *args, **kwargs):
+        for attempt in range(max_attempts):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as e:
+                if any(x in str(e).lower() for x in _RETRY_ERRORS) and attempt < max_attempts - 1:
+                    time.sleep(base_delay * (2 ** attempt))
+                    continue
+                raise
+
+    class _WithRetry(Embedding_Class):
+        def embed_documents(self, texts, **kwargs):
+            return _run(super().embed_documents, texts, **kwargs)
+
+        def embed_query(self, text, **kwargs):
+            return _run(super().embed_query, text, **kwargs)
+
+    return _WithRetry(**params)
 
 # ===========================================================================
 # LLM factory
@@ -175,9 +196,13 @@ def _emb_ollama(model: str, api_keys: dict) -> Embeddings:
     from langchain_ollama.embeddings import OllamaEmbeddings
     from app.services.ollama_service import get_ollama_service
 
-    return OllamaEmbeddings(
+    return retry_embeddings(OllamaEmbeddings,
+    dict(
         model = get_ollama_service().validate_and_ensure_embedding(model),
         base_url = settings.OLLAMA_BASE_URL
+    ),
+    max_attempts = settings.MAX_LLM_RETRIES_ON_API_LIMITS,
+    base_delay = settings.LIMIT_HIT_RETRY_BASE_DELAY,
     )
 
 
@@ -185,10 +210,14 @@ def _emb_ollama(model: str, api_keys: dict) -> Embeddings:
 def _emb_huggingface(model: str, api_keys: dict) -> Embeddings:
     from langchain_huggingface import HuggingFaceEmbeddings
 
-    return HuggingFaceEmbeddings(
-        model_name=model or _HF_DEFAULT_EMBEDDING_MODEL,
+    return retry_embeddings(HuggingFaceEmbeddings,
+    dict(
+        model_name=model or settings._HF_DEFAULT_EMBEDDING_MODEL,
         model_kwargs={"device": "cpu"},
         encode_kwargs={"normalize_embeddings": True},
+    ),
+    max_attempts = settings.MAX_LLM_RETRIES_ON_API_LIMITS,
+    base_delay = settings.LIMIT_HIT_RETRY_BASE_DELAY,
     )
 
 
@@ -201,9 +230,13 @@ def _emb_google(model: str, api_keys: dict) -> Embeddings:
             "Google API key is required for Google embeddings. "
             "Provide it via api_keys['google'] or GOOGLE_API_KEY."
         )
-    return GoogleGenerativeAIEmbeddings(
+    return retry_embeddings(GoogleGenerativeAIEmbeddings,
+    dict(
         model = model,
         google_api_key = api_key,
+    ),
+    max_attempts = settings.MAX_LLM_RETRIES_ON_API_LIMITS,
+    base_delay = settings.LIMIT_HIT_RETRY_BASE_DELAY,
     )
 
 

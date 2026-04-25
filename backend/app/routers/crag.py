@@ -18,7 +18,7 @@ from app.services.snapshot_service import (
     delete_all_snapshot_keys,
 )
 from app.routers.documents import load_registry  # Redis file registry — single source of truth
-from app.middleware.auth import get_current_session
+from app.middleware.auth import get_current_session, get_session_from_query
 from app.redis_client import get_redis
 from app.models.crag import (
     CRAGRequest,
@@ -112,7 +112,7 @@ async def _invalidate_snapshot_cache(
 
 @router.get("/status")
 async def pipeline_status(
-    session_id: str = Depends(get_current_session),
+    session_id: str = Depends(get_session_from_query),
     redis_client=Depends(get_redis),
 ):
     """

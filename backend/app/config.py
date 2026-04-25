@@ -32,8 +32,10 @@ class Settings(BaseSettings):
     HF_TOKEN : str
 
     EMBEDDING_FALLBACK : str = "ollama"
+    _HF_DEFAULT_EMBEDDING_MODEL  : str = "sentence-transformers/all-MiniLM-L6-v2"
 
-    MAX_LLM_RETRIES_ON_API_LIMITS : int = 10
+    MAX_LLM_RETRIES_ON_API_LIMITS : int = 6
+    LIMIT_HIT_RETRY_BASE_DELAY : int = 2
 
     OLLAMA_ALLOWED_EMBEDDING_MODELS : list[str]
     OLLAMA_ALLOWED_LLM_MODELS : list[str]

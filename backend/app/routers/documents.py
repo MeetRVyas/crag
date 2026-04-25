@@ -3,6 +3,7 @@ import json
 import os
 from datetime import datetime, timezone
 from typing import Optional
+import asyncio
 
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 
@@ -164,16 +165,20 @@ async def process_documents(
         api_key = await Auth_Service(redis_client).get_api_key(session_id, req.provider)
 
     try:
-        result = service.process_documents(
-            provider=req.provider,
-            api_key=api_key,
-            model=req.embedding_model or settings.EMBEDDING_MODEL,
+        # Offload to a thread — this is CPU/IO-bound and must not block the event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            service.process_documents,
+            req.embedding_model or settings.EMBEDDING_MODEL,
+            req.provider,
+            api_key,
         )
         return result
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception:
-        raise HTTPException(status_code=500, detail="Document processing failed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Document processing failed: {e}")
 
 
 # ---------------------------------------------------------------------------
