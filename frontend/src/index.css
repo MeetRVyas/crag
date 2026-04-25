@@ -1,0 +1,226 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design Tokens ────────────────────────────────────── */
+:root {
+  --c-bg:          #08090E;
+  --c-surface:     #111218;
+  --c-surface-hi:  #181A22;
+  --c-border:      #1D1F2B;
+  --c-border-hi:   #282C3E;
+  --c-primary:     #0096D6;
+  --c-primary-10:  rgba(0, 150, 214, 0.10);
+  --c-primary-20:  rgba(0, 150, 214, 0.20);
+  --c-yellow:      #FFD000;
+  --c-yellow-10:   rgba(255, 208, 0, 0.10);
+  --c-yellow-20:   rgba(255, 208, 0, 0.20);
+  --c-red:         #F03E1B;
+  --c-red-10:      rgba(240, 62, 27, 0.10);
+  --c-red-20:      rgba(240, 62, 27, 0.20);
+  --c-green:       #00C896;
+  --c-green-10:    rgba(0, 200, 150, 0.10);
+  --c-text:        #E8EAF2;
+  --c-dim:         #7880A0;
+  --c-muted:       #40455A;
+
+  --f-display:  'Bebas Neue', sans-serif;
+  --f-body:     'Barlow', sans-serif;
+  --f-condensed:'Barlow Condensed', sans-serif;
+  --f-mono:     'IBM Plex Mono', monospace;
+}
+
+/* ── Base Reset ───────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--f-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ── Scrollbars ───────────────────────────────────────── */
+::-webkit-scrollbar        { width: 3px; height: 3px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--c-border-hi); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-primary); }
+
+/* ── Dot Grid Background ──────────────────────────────── */
+.dot-grid {
+  background-image: radial-gradient(circle, var(--c-border) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ── Glow utilities ───────────────────────────────────── */
+.glow-primary { box-shadow: 0 0 24px var(--c-primary-20), 0 0 48px rgba(0,150,214,0.06); }
+.glow-yellow  { box-shadow: 0 0 20px var(--c-yellow-20); }
+.glow-red     { box-shadow: 0 0 20px var(--c-red-20); }
+
+/* ── Gradient text ────────────────────────────────────── */
+.grad-primary {
+  background: linear-gradient(135deg, var(--c-primary) 0%, #00C8FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Animated gradient border ─────────────────────────── */
+.animated-border {
+  position: relative;
+}
+.animated-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--c-primary) 0%, transparent 60%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Shimmer Loading ──────────────────────────────────── */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--c-surface) 0%,
+    var(--c-surface-hi) 50%,
+    var(--c-surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* ── Verdict badges ───────────────────────────────────── */
+.badge-correct   { background: var(--c-green-10); color: var(--c-green); border: 1px solid rgba(0,200,150,0.25); }
+.badge-ambiguous { background: var(--c-yellow-10); color: var(--c-yellow); border: 1px solid rgba(255,208,0,0.25); }
+.badge-incorrect { background: var(--c-red-10); color: var(--c-red); border: 1px solid rgba(240,62,27,0.25); }
+
+/* ── Scan line animation ──────────────────────────────── */
+@keyframes scan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+.scan-line {
+  position: fixed;
+  left: 0; top: 0; right: 0;
+  height: 120px;
+  background: linear-gradient(to bottom, transparent, rgba(0,150,214,0.03), transparent);
+  pointer-events: none;
+  animation: scan 6s linear infinite;
+  z-index: 0;
+}
+
+/* ── Input base ───────────────────────────────────────── */
+.input-base {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
+  font-family: var(--f-mono);
+  font-size: 13px;
+  border-radius: 6px;
+  padding: 8px 12px;
+  width: 100%;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+.input-base:focus {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 1px var(--c-primary), 0 0 12px var(--c-primary-10);
+}
+.input-base::placeholder { color: var(--c-muted); }
+
+/* ── Button base ──────────────────────────────────────── */
+.btn-primary {
+  background: var(--c-primary);
+  color: white;
+  font-family: var(--f-condensed);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-size: 13px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  text-transform: uppercase;
+}
+.btn-primary:hover  { background: #00AAEE; box-shadow: 0 0 16px var(--c-primary-20); }
+.btn-primary:active { transform: scale(0.97); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--c-dim);
+  font-family: var(--f-condensed);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-size: 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.btn-ghost:hover { border-color: var(--c-border-hi); color: var(--c-text); background: var(--c-surface-hi); }
+
+/* ── Panel headers ────────────────────────────────────── */
+.panel-label {
+  font-family: var(--f-display);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--c-muted);
+  text-transform: uppercase;
+}
+
+/* ── Typing cursor ────────────────────────────────────── */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+.cursor-blink::after {
+  content: '▋';
+  animation: blink 1s step-end infinite;
+  color: var(--c-primary);
+  margin-left: 1px;
+}
+
+/* ── Pipeline node states ─────────────────────────────── */
+@keyframes node-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--c-primary-20); }
+  50%       { box-shadow: 0 0 0 8px transparent; }
+}
+.node-active { animation: node-pulse 1s ease-in-out infinite; }
+
+/* ── Drop zone ────────────────────────────────────────── */
+.drop-active {
+  border-color: var(--c-primary) !important;
+  background: var(--c-primary-10) !important;
+}
+
+/* ── Message entrance ─────────────────────────────────── */
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.msg-in { animation: msg-in 0.3s ease forwards; }

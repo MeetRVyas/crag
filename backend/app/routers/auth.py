@@ -7,6 +7,8 @@ from app.redis_client import  get_redis
 from app.services.auth_service import Auth_Service
 from app.middleware.auth import get_current_session
 from app.models.auth import APIKeyPayload, TokenResponse, MessageResponse
+from app.config import settings
+from fastapi.responses import RedirectResponse
 
 router = APIRouter(prefix = "/auth", tags = ["Authentication"])
 
@@ -26,10 +28,11 @@ async def auth_callback(
 ) :
     try :
         token = await auth_service.handle_callback(request, db)
-        return {
-            "access_token" : token,
-            "token_type" : "bearer"
-        }
+        return RedirectResponse(f"{settings.FRONTEND_URL}/callback?token={token}")
+        # return {
+        #     "access_token" : token,
+        #     "token_type" : "bearer"
+        # }
     except Exception as e :
         raise HTTPException(status_code = 400, detail = str(e))
 

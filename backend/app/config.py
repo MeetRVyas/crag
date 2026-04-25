@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "CRAG System"
     
     DATABASE_URL: str
+    FRONTEND_URL: str
     
     # 2nd redis instead of local because we are using docker
     # so redis is the docker container name
