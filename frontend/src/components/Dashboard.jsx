@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LogOut, Key, Cpu, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -7,6 +7,7 @@ import ChatPanel       from './ChatPanel'
 import PipelineDrawer  from './PipelineDrawer'
 import ModelManager    from './ModelManager'
 import ApiKeyModal     from './ApiKeyModal'
+import api from '../api/client'
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 function Header({ onOpenModels, onOpenKeys, sidebarOpen, setSidebarOpen }) {
@@ -83,11 +84,30 @@ export default function Dashboard() {
 
   // Current retrieval config (passed from chat to document panel and vice-versa)
   const [retrieverConfig, setRetrieverConfig] = useState({
-    llmProvider: 'ollama',
-    llmModel:    '',
-    embProvider: 'ollama',
-    embModel:    '',
+    llmProvider: "google",
+    llmModel:    "",
+    embProvider: "google",
+    embModel:    "",
   })
+
+  useEffect(() => {
+    api.providers.llm().then(([llmRes, embRes]) => {
+    setRetrieverConfig({
+      llmProvider: llmRes.data.provider,
+      llmModel:    llmRes.data.model,
+    })
+    }).catch(() => {
+      // fallback already set in useState
+    })
+    api.providers.embedding().then(([llmRes, embRes]) => {
+    setRetrieverConfig({
+      embProvider: embRes.data.provider,
+      embModel:    embRes.data.model,
+    })
+    }).catch(() => {
+      // fallback already set in useState
+    })
+  }, [])
 
   const handlePipelineEvent = useCallback((event) => {
     setPipelineEvents((prev) => [...prev, event])

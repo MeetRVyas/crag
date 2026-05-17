@@ -29,6 +29,10 @@ client.interceptors.response.use(
 
 // ── Auth ────────────────────────────────────────────────────────────────────
 export const api = {
+  providers: {
+    llm: () => client.get('/providers/llm'),
+    embedding: () => client.get('/providers/embedding'),
+  },
   auth: {
     /** Returns the URL to redirect the user to for Google OAuth */
     loginUrl: () => `${BASE}/auth/login`,

@@ -8,7 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.database import Base, engine
 from app.config import settings
-from app.routers import auth, documents, crag, ollama
+from app.routers import auth, documents, crag, ollama, providers
 from app.services.ollama_service import get_ollama_service
 
 # Create Database Tables
@@ -76,6 +76,7 @@ app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(crag.router)
 app.include_router(ollama.router)
+app.include_router(providers.router)
 
 @app.get("/")
 def health_check() :

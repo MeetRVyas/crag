@@ -9,12 +9,12 @@ import api from '../api/client'
 
 /* ── Constants ────────────────────────────────────────── */
 const LLM_PROVIDERS = [
-  { id: 'ollama',          label: 'Ollama',         local: true  },
-  { id: 'groq',            label: 'Groq',           local: false },
-  { id: 'anthropic',       label: 'Anthropic',      local: false },
-  { id: 'google',          label: 'Google Gemini',  local: false },
-  { id: 'huggingface',     label: 'HuggingFace API',local: false },
-  { id: 'huggingface_local','label':'HF Local',     local: true  },
+  { id: 'ollama',           label: 'Ollama',          local: true  },
+  { id: 'groq',             label: 'Groq',             local: false },
+  { id: 'anthropic',        label: 'Anthropic',        local: false },
+  { id: 'google',           label: 'Google Gemini',    local: false },
+  { id: 'huggingface',      label: 'HuggingFace API',  local: false },
+  { id: 'huggingface_local','label': 'HF Local',       local: true  },
 ]
 
 const EMB_PROVIDERS = [
