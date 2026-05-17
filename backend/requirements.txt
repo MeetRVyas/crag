@@ -24,10 +24,10 @@ langchain-text-splitters
 # ── LLM providers ─────────────────────────────────────────────────────────────
 langchain-ollama
 langchain-openai
-langchain-groq
+# langchain-groq
 langchain-anthropic
 langchain-google-genai
-langchain-huggingface
+# langchain-huggingface
 
 # ── LangGraph ─────────────────────────────────────────────────────────────────
 langgraph
@@ -44,10 +44,10 @@ FlashRank
 pypdf
 
 # ── HuggingFace local (sentence-transformers + huggingface_local LLM) ─────────
-sentence-transformers
-transformers
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
+# sentence-transformers
+# transformers
+# --extra-index-url https://download.pytorch.org/whl/cpu
+# torch
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 filelock

@@ -3,6 +3,12 @@ import axios from 'axios'
 // ── Axios instance ──────────────────────────────────────────────────────────
 const BASE = import.meta.env.VITE_API_URL ?? '/api'
 
+const TIMEOUT_1M  = 60 * 1000             // 1 min
+const TIMEOUT_2H  = 2 * 60 * TIMEOUT_1M   // 120 min — chat pipeline
+const TIMEOUT_30M =     30 * TIMEOUT_1M   //  30 min — index building
+const TIMEOUT_2M  =      2 * TIMEOUT_1M   //   2 min — query / retrieval test
+
+
 export const client = axios.create({
   baseURL: BASE,
   timeout: 60_000,
@@ -56,19 +62,19 @@ export const api = {
     },
 
     process: (provider, embedding_model) =>
-      client.post('/documents/process', { provider, embedding_model }),
+      client.post('/documents/process', { provider, embedding_model }, { timeout: TIMEOUT_30M }),
 
     delete: (filename) => client.delete(`/documents/${encodeURIComponent(filename)}`),
 
     snapshots: () => client.get('/documents/snapshots'),
 
     query: (query, model, provider) =>
-      client.post('/documents/query', { query, model, provider }),
+      client.post('/documents/query', { query, model, provider }, { timeout: TIMEOUT_2M }),
   },
 
   // ── CRAG ──────────────────────────────────────────────────────────────────
   crag: {
-    chat: (payload) => client.post('/crag/chat', payload),
+    chat: (payload) => client.post('/crag/chat', payload, { timeout: TIMEOUT_2H }),
 
     /** Returns an EventSource for SSE pipeline status */
     statusStream: (token) => {

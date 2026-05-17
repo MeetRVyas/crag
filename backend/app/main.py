@@ -10,6 +10,7 @@ from app.database import Base, engine
 from app.config import settings
 from app.routers import auth, documents, crag, ollama, providers
 from app.services.ollama_service import get_ollama_service
+from app.services.cleanup_service import cleanup_idle_containers, cleanup_orphaned_sessions
 
 # Create Database Tables
 Base.metadata.create_all(bind = engine)
@@ -39,6 +40,8 @@ async def _wait_for_ollama(timeout: int = 120, interval: int = 3) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    asyncio.create_task(cleanup_orphaned_sessions(interval_seconds=3600))
+    asyncio.create_task(cleanup_idle_containers(interval=300))
     ready = await _wait_for_ollama(timeout=120, interval=3)
     if ready:
         print("Preloading default Ollama models...")

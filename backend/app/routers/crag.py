@@ -127,15 +127,21 @@ async def pipeline_status(
         {"complete": true, "verdict": str, "timestamp": str}
     """
     async def event_generator():
+        print("[START] event generator")
         key      = f"pipeline:status:{session_id}"
         loop     = asyncio.get_event_loop()
-        deadline = loop.time() + settings._SSE_TIMEOUT
+        timeout  = settings.SSE_TIMEOUT
         index    = 0
+
+        if settings.PROVIDER == "ollama" or settings.EMBEDDING_PROVIDER == "ollama" :
+            timeout *= 18
+        deadline = loop.time() + timeout
 
         try:
             while loop.time() < deadline:
                 events = await redis_client.lrange(key, index, -1)
                 if events:
+                    deadline = loop.time() + timeout
                     for event_json in events:
                         index += 1
                         yield f"data: {event_json}\n\n"
@@ -147,8 +153,10 @@ async def pipeline_status(
                 else:
                     yield ": keep-alive\n\n"
                     await asyncio.sleep(settings._SSE_POLL_INTERVAL)
+            print("[DONE] Deadline reached")
         finally:
             await redis_client.delete(key)
+        print("[END] event generator")
 
     return StreamingResponse(
         event_generator(),
@@ -173,6 +181,8 @@ async def chat(
 ) -> CRAGResponse:
     if not session_id:
         raise HTTPException(status_code=401, detail="Invalid session")
+    
+    await redis_client.delete(f"pipeline:status:{session_id}")
 
     # --- 1. Collect API keys ------------------------------------------------
     auth_service = Auth_Service(redis_client)
@@ -212,7 +222,7 @@ async def chat(
     # --- 2. Build retriever -------------------------------------------------
     doc_service = DocumentService(session_id)
     retriever = doc_service.get_retriever(
-        model=req.embedding_model,
+        model=req.embedding_model or settings.EMBEDDING_MODEL,
         provider=req.embedding_provider,
         api_key=api_keys.get(req.embedding_provider),
     )

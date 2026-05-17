@@ -1,50 +1,40 @@
-# Base Image
+# Base Image — slim variant keeps it lean
 FROM python:3.11-slim
 
-# Prevent Python from writing .pyc files
-ENV PYTHONDONTWRITEBYTECODE=1
-
-# Ensure logs appear immediately (no buffering)
-ENV PYTHONUNBUFFERED=1
-
-# Disable pip checks
-ENV PIP_NO_CACHE_DIR=1 \
+# Environment
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Create non-root user for security
-RUN addgroup --system appgroup && \
-    adduser --system --ingroup appgroup appuser
+COPY requirements.lock .
+# COPY --chown=appuser:appgroup requirements.lock .
 
-# Set working directory
+# System deps + user setup in ONE layer (minimizes layer count & size)
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#         build-essential \
+#         curl \
+    # && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
+    # && addgroup --system appgroup \
+RUN addgroup --system appgroup \
+    && adduser --system --ingroup appgroup appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser:appgroup /app \
+    && mkdir -p /tmp/sessions \
+    && chown -R appuser:appgroup /tmp/sessions \
+    && pip install --upgrade pip \
+    && pip install -r requirements.lock \
+    && rm requirements.lock
+
+# Working directory
 WORKDIR /app
 
-# Install system dependencies (if needed later)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
-COPY requirements.lock .
-
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.lock
-
 # Copy application code
-COPY . .
+COPY --chown=appuser:appgroup . .
 
-# Ensure correct ownership
-RUN chown -R appuser:appgroup /app
-
-# Make temporary sessions directory
-RUN mkdir -p /tmp/sessions && \
-    chown -R appuser:appgroup /tmp/sessions
-
-# Switch to non-root user
+# Drop to non-root
 USER appuser
 
-# Expose application port
+# Runtime
 EXPOSE 8000
-
-# Start application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

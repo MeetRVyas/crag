@@ -83,21 +83,21 @@ def _llm_ollama(model: str, api_keys: dict) -> BaseChatModel:
     )
 
 
-def _llm_groq(model: str, api_keys: dict) -> BaseChatModel:
-    from langchain_groq import ChatGroq
+# def _llm_groq(model: str, api_keys: dict) -> BaseChatModel:
+#     from langchain_groq import ChatGroq
 
-    api_key = api_keys.get("groq") or os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        raise ValueError(
-            "Groq API key is required. "
-            "Provide it via api_keys['groq'] or the GROQ_API_KEY env var."
-        )
-    return ChatGroq(
-        model = model,
-        temperature = 0,
-        api_key = api_key,
-        max_retries = settings.MAX_LLM_RETRIES_ON_API_LIMITS
-    )
+#     api_key = api_keys.get("groq") or os.getenv("GROQ_API_KEY", "")
+#     if not api_key:
+#         raise ValueError(
+#             "Groq API key is required. "
+#             "Provide it via api_keys['groq'] or the GROQ_API_KEY env var."
+#         )
+#     return ChatGroq(
+#         model = model,
+#         temperature = 0,
+#         api_key = api_key,
+#         max_retries = settings.MAX_LLM_RETRIES_ON_API_LIMITS
+#     )
 
 
 def _llm_anthropic(model: str, api_keys: dict) -> BaseChatModel:
@@ -134,6 +134,23 @@ def _llm_google(model: str, api_keys: dict) -> BaseChatModel:
     )
 
 
+def _llm_openai(model: str, api_keys: dict) -> BaseChatModel:
+    from langchain_openai import ChatOpenAI
+
+    api_key = api_keys.get("openai") or os.getenv("OPENAI_API_KEY", "")
+    if not api_key:
+        raise ValueError(
+            "OpenAI API key is required. "
+            "Provide it via api_keys['openai'] or the OPENAI_API_KEY env var."
+        )
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        temperature=0,
+        max_retries=settings.MAX_LLM_RETRIES_ON_API_LIMITS,
+    )
+
+
 def _llm_huggingface_api(model: str, api_keys: dict) -> BaseChatModel:
     from langchain_openai import ChatOpenAI
 
@@ -155,22 +172,22 @@ def _llm_huggingface_api(model: str, api_keys: dict) -> BaseChatModel:
     )
 
 
-@_cache_model("huggingface_llm")
-def _llm_huggingface_local(model: str, api_keys: dict) -> BaseChatModel:
-    # No API key needed — model runs locally via transformers
-    from langchain_huggingface import HuggingFacePipeline, ChatHuggingFace
+# @_cache_model("huggingface_llm")
+# def _llm_huggingface_local(model: str, api_keys: dict) -> BaseChatModel:
+#     # No API key needed — model runs locally via transformers
+#     from langchain_huggingface import HuggingFacePipeline, ChatHuggingFace
 
-    pipeline = HuggingFacePipeline.from_model_id(
-        model_id = model,
-        task = "text-generation",
-        pipeline_kwargs = {
-            "max_new_tokens": 1024,
-            "temperature": 0.01, # transformers rejects exactly 0
-            "do_sample": True,
-        },
-        device = -1,  # -1 = CPU; set to 0 for first GPU
-    )
-    return ChatHuggingFace(llm = pipeline)
+#     pipeline = HuggingFacePipeline.from_model_id(
+#         model_id = model,
+#         task = "text-generation",
+#         pipeline_kwargs = {
+#             "max_new_tokens": 1024,
+#             "temperature": 0.01, # transformers rejects exactly 0
+#             "do_sample": True,
+#         },
+#         device = -1,  # -1 = CPU; set to 0 for first GPU
+#     )
+#     return ChatHuggingFace(llm = pipeline)
 
 
 # ---------------------------------------------------------------------------
@@ -179,11 +196,12 @@ def _llm_huggingface_local(model: str, api_keys: dict) -> BaseChatModel:
 
 _LLM_REGISTRY: dict[str, Callable[[str, dict], BaseChatModel]] = {
     "ollama":            _llm_ollama,
-    "groq":              _llm_groq,
+    # "groq":              _llm_groq,
     "anthropic":         _llm_anthropic,
     "google":            _llm_google,
+    "openai":            _llm_openai,
     "huggingface":   _llm_huggingface_api,
-    "huggingface_local": _llm_huggingface_local,
+    # "huggingface_local": _llm_huggingface_local,
 }
 
 
@@ -206,19 +224,19 @@ def _emb_ollama(model: str, api_keys: dict) -> Embeddings:
     )
 
 
-@_cache_model("huggingface_embeddings")
-def _emb_huggingface(model: str, api_keys: dict) -> Embeddings:
-    from langchain_huggingface import HuggingFaceEmbeddings
+# @_cache_model("huggingface_embeddings")
+# def _emb_huggingface(model: str, api_keys: dict) -> Embeddings:
+#     from langchain_huggingface import HuggingFaceEmbeddings
 
-    return retry_embeddings(HuggingFaceEmbeddings,
-    dict(
-        model_name=model or settings._HF_DEFAULT_EMBEDDING_MODEL,
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
-    ),
-    max_attempts = settings.MAX_LLM_RETRIES_ON_API_LIMITS,
-    base_delay = settings.LIMIT_HIT_RETRY_BASE_DELAY,
-    )
+#     return retry_embeddings(HuggingFaceEmbeddings,
+#     dict(
+#         model_name=model or settings._HF_DEFAULT_EMBEDDING_MODEL,
+#         model_kwargs={"device": "cpu"},
+#         encode_kwargs={"normalize_embeddings": True},
+#     ),
+#     max_attempts = settings.MAX_LLM_RETRIES_ON_API_LIMITS,
+#     base_delay = settings.LIMIT_HIT_RETRY_BASE_DELAY,
+#     )
 
 
 def _emb_google(model: str, api_keys: dict) -> Embeddings:
@@ -240,6 +258,28 @@ def _emb_google(model: str, api_keys: dict) -> Embeddings:
     )
 
 
+def _emb_openai(model: str, api_keys: dict, base_url: str | None = None) -> Embeddings:
+    from langchain_openai import OpenAIEmbeddings
+
+    api_key = api_keys.get("openai") or os.getenv("OPENAI_API_KEY", "")
+
+    if not api_key :
+        raise ValueError(
+            "OpenAI API key is required for OpenAI embeddings. "
+            "Provide it via api_keys['openai'] or OPENAI_API_KEY. "
+        )
+
+    return retry_embeddings(
+        OpenAIEmbeddings,
+        dict(
+            model=model,
+            api_key=api_key,
+        ),
+        max_attempts=settings.MAX_LLM_RETRIES_ON_API_LIMITS,
+        base_delay=settings.LIMIT_HIT_RETRY_BASE_DELAY,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Embedding registry  —  provider string → builder function
 # ---------------------------------------------------------------------------
@@ -252,7 +292,7 @@ _FALLBACK_DEFAULT_EMBEDDING_MODELS = {
 }
 _FALLBACK_FUNCS = {
     "ollama":      _emb_ollama,
-    "huggingface": _emb_huggingface,
+    # "huggingface": _emb_huggingface,
 }
 
 def _emb_fallback(model: str, api_keys: dict) -> Embeddings:
@@ -283,10 +323,11 @@ def _emb_fallback(model: str, api_keys: dict) -> Embeddings:
 
 _EMBEDDING_REGISTRY: dict[str, Callable[[str, dict], Embeddings]] = {
     "ollama":      _emb_ollama,
-    "huggingface": _emb_huggingface,
+    # "huggingface": _emb_huggingface,
     "google":      _emb_google,
+    "openai":      _emb_openai,
     # Providers with no embedding API → Ollama fallback
-    "groq":        _emb_fallback,
+    # "groq":        _emb_fallback,
     "anthropic":   _emb_fallback
 }
 

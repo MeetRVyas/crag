@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # so redis is the docker container name
     REDIS_URL: str
     
-    JWT_SECRET_KEY: str      # We will generate this
+    JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRY_HOURS: int = 24
 
@@ -21,7 +21,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str
     GOOGLE_REDIRECT_URI: str
     
-    ENCRYPTION_KEY: str      # We will generate this
+    ENCRYPTION_KEY: str
+
+    UPLOAD_DIR : str
+    MAX_FILE_SIZE_MB : int
+
 
     EMBEDDING_PROVIDER : str
     PROVIDER : str
@@ -44,7 +48,7 @@ class Settings(BaseSettings):
     _LOCAL_EMBEDDING_PROVIDERS : set[str] = {"ollama", "huggingface"}
 
     _CACHE_TTL : int = 86_400  # 24 hours
-    _SSE_TIMEOUT : int = 60      # seconds
+    SSE_TIMEOUT : int
     _SSE_POLL_INTERVAL : int = 0.2     # seconds
     _SNAPSHOT_TTL : int = 86_400  # 24 hours
 

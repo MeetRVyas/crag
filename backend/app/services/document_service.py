@@ -29,13 +29,7 @@ from langchain_core.stores import InMemoryStore
 
 from app.models.documents import ProcessResult
 from app.services.llm_factory import build_embeddings
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/tmp/data/sessions")
-MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
+from app.config import settings
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +45,7 @@ class DocumentService:
         self._validate_session_id(session_id)
 
         self.session_id = session_id
-        self.session_dir = os.path.join(UPLOAD_DIR, session_id)
+        self.session_dir = os.path.join(settings.UPLOAD_DIR, session_id)
         self.upload_dir = os.path.join(self.session_dir, "uploads")
         self.index_dir = os.path.join(self.session_dir, "index")
         self.parent_store_path = os.path.join(self.session_dir, "parents.json")
@@ -84,7 +78,7 @@ class DocumentService:
             raise ValueError("Only PDF files are allowed")
 
         file_path = os.path.join(self.upload_dir, filename)
-        max_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+        max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
         total_size = 0
         chunk_size = 1024 * 1024  # 1 MB
 
@@ -98,7 +92,7 @@ class DocumentService:
                     if total_size > max_bytes:
                         buffer.close()
                         os.remove(file_path)
-                        raise ValueError(f"File exceeds {MAX_FILE_SIZE_MB} MB limit")
+                        raise ValueError(f"File exceeds {settings.MAX_FILE_SIZE_MB} MB limit")
                     buffer.write(chunk)
         finally:
             file.file.close()

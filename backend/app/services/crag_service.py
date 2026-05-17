@@ -15,6 +15,8 @@ from app.models.crag import Score, KeepOrDrop
 from app.services.llm_factory import build_llm
 from app.config import settings
 
+import traceback
+
 # TODO : Logging
 
 # Graph state
@@ -112,8 +114,10 @@ class CRAG_Service :
                 self._loop,
             )
             future.result(timeout=2)
-        except Exception:
-            pass  # Status tracking is always non-fatal
+        except Exception as e :
+            print(f"[ERROR] in _push_status : {e}")
+            traceback.print_exc()
+            # pass  # Status tracking is always non-fatal
 
     async def _push_status_coro(self, event: str) -> None:
         """Async side of status push — runs on the main event loop."""
@@ -137,8 +141,10 @@ class CRAG_Service :
                 self._loop,
             )
             future.result(timeout=2)
-        except Exception:
-            pass
+        except Exception as e :
+            print(f"[ERROR] in _push_complete : {e}")
+            traceback.print_exc()
+            # pass
 
     # ------------------------------------------------------------------
     # Graph construction
@@ -218,9 +224,8 @@ class CRAG_Service :
         except Exception as e:
             # Push an error completion so the SSE consumer doesn't hang
             self._push_complete("ERROR")
-            import traceback
             traceback.print_exc()
-            print(f"CRAG pipeline crashed: {e}")
+            print(f"[ERROR] CRAG pipeline crashed: {e}")
             raise
 
     # ------------------------------------------------------------------
@@ -302,6 +307,8 @@ class CRAG_Service :
                 score = res.score
                 time.sleep(1)
             except Exception as e :
+                print(f"[ERROR] in evaluate : {e}")
+                traceback.print_exc()
                 # TODO : Log a warning here
                 score = 0.0
                 time.sleep(1)
@@ -351,7 +358,9 @@ class CRAG_Service :
 
         try:
             query = chain.invoke({"question": question})
-        except Exception :
+        except Exception as e :
+            print(f"[ERROR] in rewrite : {e}")
+            traceback.print_exc()
             # TODO : Log a warning here
             query = question # Fallback
 
@@ -392,8 +401,9 @@ class CRAG_Service :
                     metadata={"source": url, "title": title},
                 ))
             return {"web_docs": web_docs}
-        except Exception as e:
-            print("Tavily search failed: %s", e)
+        except Exception as e :
+            print(f"[ERROR] in research : {e}")
+            traceback.print_exc()
             return {"web_docs": []}
 
     def refine(self, state: State) -> Dict[str, Any]:
@@ -434,7 +444,9 @@ class CRAG_Service :
                 if res.keep:
                     kept.append(sent)
                 time.sleep(1)
-            except:
+            except Exception as e :
+                print(f"[ERROR] in refine : {e}")
+                traceback.print_exc()
                 kept.append(sent)  # fail-open
                 time.sleep(1)
         print()
@@ -473,6 +485,7 @@ class CRAG_Service :
         })
 
         answer = self._extract_text(response)
+        print(answer)
         return {"answer": answer}
 
     # ------------------------------------------------------------------
